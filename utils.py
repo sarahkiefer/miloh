@@ -6,9 +6,10 @@ import time
 import json
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Optional
 from datetime import datetime
 from xml.etree import ElementTree as ET
+from urllib.parse import urljoin, quote
 
 import requests
 from azure.cognitiveservices.vision.computervision import ComputerVisionClient
@@ -24,6 +25,9 @@ from azure.search.documents.models import VectorizedQuery
 logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+DEFAULT_JUPYTER_TIMEOUT = 30
+DEFAULT_JUPYTER_SPAWN_TIMEOUT = 90
 
 
 def question_ocr(xml: str) -> str:
@@ -299,6 +303,203 @@ def retrieve_docs_manual(question_category: str, category_mapping: dict, questio
             retrieved_docs = 'none (error)'
             logger.error(f"Error retrieving manual document: {e} (selected path: {selected_path})")
     return str(problem_paths_list), selected_path, retrieved_docs
+
+
+def _jupyter_session(api_key: str) -> requests.Session:
+    session = requests.Session()
+    session.headers.update({"Authorization": f"token {api_key}"})
+    return session
+
+
+def _jupyter_request(session: requests.Session, method: str, url: str, timeout: int, **kwargs) -> requests.Response:
+    return session.request(method=method, url=url, timeout=timeout, **kwargs)
+
+
+def _get_user_model(session: requests.Session, hub_url: str, username: str, timeout: int) -> dict:
+    url = f"{hub_url.rstrip('/')}/hub/api/users/{quote(username)}"
+    response = _jupyter_request(session, "GET", url, timeout=timeout)
+    response.raise_for_status()
+    return response.json()
+
+
+def ensure_server_running(session: requests.Session, hub_url: str, username: str, timeout: int = DEFAULT_JUPYTER_TIMEOUT, spawn_timeout: int = DEFAULT_JUPYTER_SPAWN_TIMEOUT) -> dict:
+    user_url = f"{hub_url.rstrip('/')}/hub/api/users/{quote(username)}"
+    user_model = _get_user_model(session, hub_url, username, timeout=timeout)
+    servers = user_model.get("servers", {})
+    server_key = ""
+
+    if server_key in servers and servers[server_key].get("ready"):
+        return servers[server_key]
+
+    start_url = f"{user_url}/servers/"
+    response = _jupyter_request(session, "POST", start_url, timeout=timeout)
+    if response.status_code not in (201, 202):
+        response.raise_for_status()
+
+    start_time = time.time()
+    while time.time() - start_time < spawn_timeout:
+        user_model = _get_user_model(session, hub_url, username, timeout=timeout)
+        servers = user_model.get("servers", {})
+        server_model = servers.get(server_key)
+        if server_model and server_model.get("ready"):
+            return server_model
+        time.sleep(1)
+
+    raise TimeoutError(f"Server for user '{username}' did not become ready within {spawn_timeout}s.")
+
+
+def build_server_base(hub_url: str, server_model: dict) -> str:
+    return f"{hub_url.rstrip('/')}{server_model['url']}"
+
+
+def whoami(session: requests.Session, hub_url: str, timeout: int) -> str:
+    response = _jupyter_request(session, "GET", f"{hub_url.rstrip('/')}/hub/api/user", timeout=timeout)
+    response.raise_for_status()
+    return response.json()["name"]
+
+
+def mint_scoped_token_for_owner(
+    admin_session: requests.Session,
+    hub_url: str,
+    owner_username: str,
+    scopes: List[str],
+    timeout: int,
+    note: str = "miloh-export",
+    expires_in: int = 900,
+) -> str:
+    url = f"{hub_url.rstrip('/')}/hub/api/users/{quote(owner_username)}/tokens"
+    response = _jupyter_request(
+        admin_session,
+        "POST",
+        url,
+        timeout=timeout,
+        json={"note": note, "scopes": scopes, "expires_in": expires_in},
+    )
+    if response.status_code == 403:
+        raise PermissionError(
+            f"403 from tokens API. The calling token needs 'tokens!user={owner_username}' "
+            "and the requested scopes must be a subset of the caller's scopes."
+        )
+    response.raise_for_status()
+    return response.json()["token"]
+
+
+def _contents_get(session: requests.Session, server_base: str, api_path: str, timeout: int, content: int = 1) -> Optional[dict]:
+    url = urljoin(server_base, f"api/contents/{api_path.lstrip('/')}")
+    response = _jupyter_request(session, "GET", url, timeout=timeout, params={"content": content})
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    return response.json()
+
+
+def _guess_assignment_candidates(assignment: str) -> List[tuple]:
+    a = assignment.strip().lower()
+    match = re.match(r"(hw|lab|proj|disc)(\d+)?", a)
+    if not match:
+        return [(a, f"{a}.ipynb")]
+
+    kind, num = match.group(1), match.group(2) or ""
+    stem = f"{kind}{num}"
+    folders = {"hw": "hw", "lab": "lab", "proj": "proj", "disc": "disc"}
+    folder = folders.get(kind, kind)
+    subdirs = [f"{folder}/{stem}", f"{folder}"]
+    files = [f"{stem}.ipynb", f"{stem}_starter.ipynb", f"{stem}_released.ipynb"]
+    return [(sd, fn) for sd in subdirs for fn in files]
+
+
+def find_notebook_path(session: requests.Session, server_base: str, assignment: str, timeout: int) -> str:
+    if assignment.startswith(("http://", "https://")) and "/lab/tree/" in assignment:
+        assignment = assignment.split("/lab/tree/", 1)[1]
+
+    if "/" in assignment:
+        meta = _contents_get(session, server_base, assignment, timeout=timeout)
+        if meta and meta.get("type") in ("file", "notebook") and meta["path"].lower().endswith(".ipynb"):
+            return meta["path"]
+        if meta and meta.get("type") == "directory":
+            entries = meta.get("content", []) or []
+            ipynbs = [e for e in entries if e.get("type") in ("file", "notebook") and e["path"].lower().endswith(".ipynb")]
+            if ipynbs:
+                stem = Path(assignment).name.lower()
+                preferred = [e for e in ipynbs if Path(e["path"]).stem.lower().startswith(stem)]
+                return (preferred or ipynbs)[0]["path"]
+
+    if assignment.endswith(".ipynb"):
+        return assignment
+
+    for root in ["fa25-student", ""]:
+        for subdir, filename in _guess_assignment_candidates(assignment):
+            candidate = f"{root}/{subdir}/{filename}".strip("/")
+            meta = _contents_get(session, server_base, candidate, timeout=timeout, content=0)
+            if meta:
+                return candidate
+
+    raise FileNotFoundError(
+        f"Could not locate a notebook for assignment '{assignment}'. "
+        "Try passing a relative path to the .ipynb from your server root."
+    )
+
+
+def extract_notebook_code(nb_content: dict) -> str:
+    notebook = nb_content.get("content", {}) if isinstance(nb_content, dict) else {}
+    cells = notebook.get("cells", []) if isinstance(notebook, dict) else []
+    code_blocks = []
+    for idx, cell in enumerate(cells, start=1):
+        if cell.get("cell_type") != "code":
+            continue
+        source = cell.get("source", "")
+        if isinstance(source, list):
+            source = "".join(source)
+        source = source.strip()
+        if not source:
+            continue
+        code_blocks.append(f"# Cell {idx}\n{source}")
+    return "\n\n".join(code_blocks)
+
+
+def get_student_assignment_code(
+    hub_url: str,
+    api_key: str,
+    student_username: str,
+    assignment: str,
+    timeout: int = DEFAULT_JUPYTER_TIMEOUT,
+    spawn_timeout: int = DEFAULT_JUPYTER_SPAWN_TIMEOUT,
+    max_chars: int = 8000,
+) -> str:
+    admin_session = _jupyter_session(api_key)
+    server_model = ensure_server_running(
+        session=admin_session,
+        hub_url=hub_url,
+        username=student_username,
+        timeout=timeout,
+        spawn_timeout=spawn_timeout,
+    )
+    server_base = build_server_base(hub_url, server_model)
+
+    access_session = admin_session
+    try:
+        owner = whoami(admin_session, hub_url, timeout=timeout)
+        scopes = [f"access:servers!user={student_username}"]
+        narrow_token = mint_scoped_token_for_owner(
+            admin_session=admin_session,
+            hub_url=hub_url,
+            owner_username=owner,
+            scopes=scopes,
+            timeout=timeout,
+        )
+        access_session = _jupyter_session(narrow_token)
+    except Exception as exc:
+        logger.warning("Falling back to admin token for notebook access: %s", exc)
+
+    nb_path = find_notebook_path(access_session, server_base, assignment, timeout=timeout)
+    nb_content = _contents_get(access_session, server_base, nb_path, timeout=timeout, content=1)
+    if not nb_content:
+        return ""
+
+    code = extract_notebook_code(nb_content)
+    if max_chars and len(code) > max_chars:
+        return code[:max_chars].rstrip() + "\n...[truncated]..."
+    return code
 
 
 def log_local(log_dict: Dict[str, Any], file_path: str) -> None:

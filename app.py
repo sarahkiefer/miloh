@@ -2,6 +2,7 @@ import os
 import re
 import ast
 import logging
+from urllib.parse import urlsplit
 from typing import Dict, Any
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
@@ -16,6 +17,7 @@ from utils import (
     generate,
     log_blob,
     log_local,
+    get_student_assignment_code,
 )
 
 # Make INFO logs visible (your previous basicConfig dropped INFO)
@@ -56,6 +58,20 @@ def get_env_list(key: str) -> list:
     except Exception:
         logger.error("get_env_list failed for key=%s (value=%r)\n%s", key, os.getenv(key), format_exc())
         raise
+
+
+def extract_username_from_location(location: str) -> str:
+    if not location:
+        return ""
+    match = re.search(r"/user/([^/]+)/", location)
+    return match.group(1) if match else ""
+
+
+def extract_hub_base_url(location: str) -> str:
+    if not location or not location.startswith(("http://", "https://")):
+        return ""
+    parsed = urlsplit(location)
+    return f"{parsed.scheme}://{parsed.netloc}"
 
 # Global error handler to surface Python tracebacks to logs and client
 @app.errorhandler(Exception)
@@ -179,6 +195,44 @@ def miloh():
                     question_category in logistics_categories,
                     question_category in worksheet_categories)
 
+        student_code = "none"
+        if question_category in assignment_categories:
+            student_username = (
+                input_dict.get("student")
+                or input_dict.get("user")
+                or input_dict.get("hub_user")
+                or extract_username_from_location(input_dict.get("location", ""))
+                or extract_username_from_location(input_dict.get("assignment", ""))
+            )
+            hub_url = (
+                os.getenv("JUPYTERHUB_URL")
+                or extract_hub_base_url(input_dict.get("location", ""))
+                or extract_hub_base_url(input_dict.get("assignment", ""))
+            )
+            hub_api_key = os.getenv("JUPYTERHUB_API_TOKEN")
+            if student_username and hub_url and hub_api_key:
+                try:
+                    student_code = get_student_assignment_code(
+                        hub_url=hub_url,
+                        api_key=hub_api_key,
+                        student_username=student_username,
+                        assignment=input_dict.get("assignment", ""),
+                        timeout=int(os.getenv("JUPYTERHUB_TIMEOUT", "30")),
+                        spawn_timeout=int(os.getenv("JUPYTERHUB_SPAWN_TIMEOUT", "90")),
+                        max_chars=int(os.getenv("STUDENT_CODE_MAX_CHARS", "8000")),
+                    ) or "none"
+                    logger.info("Retrieved student code length=%s", len(student_code))
+                except Exception:
+                    student_code = "none (error)"
+                    logger.warning("miloh: student code retrieval failed\n%s", format_exc())
+            else:
+                logger.info(
+                    "miloh: student code retrieval skipped (user=%s hub_url=%s api_key=%s)",
+                    "yes" if student_username else "no",
+                    "yes" if hub_url else "no",
+                    "yes" if hub_api_key else "no",
+                )
+
         # Hybrid document retrieval
         retrieved_docs_hybrid = 'none'
         try:
@@ -260,7 +314,8 @@ def miloh():
                         prompt=prompts.get_first_assignment_prompt(
                             processed_conversation=processed_conversation,
                             retrieved_qa_pairs=retrieved_qa_pairs,
-                            retrieved_docs_manual=retrieved_docs_manual
+                            retrieved_docs_manual=retrieved_docs_manual,
+                            student_code=student_code
                         )
                     )
                     logger.info('Initial response (assignment question) length=%s', len(response_0 or ''))
@@ -329,6 +384,7 @@ def miloh():
             'problem_list_manual': problem_list_manual,
             'selected_doc_manual': selected_doc_manual,
             'retrieved_docs_manual': retrieved_docs_manual,
+            'student_code': student_code,
             'response_0': response_0,
             'response': response
         }

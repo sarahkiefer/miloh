@@ -91,7 +91,7 @@ I hope this hint was helpful. Feel free to follow up if you have further questio
 
 
 def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs: str,
-                                retrieved_docs_manual: str) -> list:
+                                retrieved_docs_manual: str, student_code: str) -> list:
     curr_prompt = f"""Here are the relevant excerpts from the assignment solutions to guide your response:
     ==========================================
     {retrieved_docs_manual}
@@ -103,10 +103,19 @@ def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs:
     ==========================================
 
     ==========================================
+    Student's assignment code (if available):
+    ==========================================
+    {student_code}
+    ==========================================
+
+    ==========================================
     Conversation History and Student question:
     {processed_conversation}
     ==========================================
-    Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided assignment solutions and historical question-answer pairs. Do not repeat what has already been said. Do not give away or directly refer to the solutions."""
+    From the conversation and retrieved notes/solutions/QA, list the top 3 likely code issues the student has, ranked.
+    Output only a numbered list (1-3). Each item must be one line using this template:
+    <Issue label> | conf=<high/med/low> | evidence=<key clue> | check=<what to inspect/ask> | fix=<high-level direction (no full solution)>
+    Rules: be specific (names/errors/tests/line refs if available). No solutions. If unsure, set conf=low and make check ask for the missing confirming detail."""
     return [
         {"role": "system", "content": assignment_1_system_prompt},
         {"role": "user", "content": assignment_1_few_shot_1_user},
