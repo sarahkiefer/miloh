@@ -2,7 +2,6 @@ import os
 import re
 import ast
 import logging
-from urllib.parse import urlsplit
 from typing import Dict, Any
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
@@ -60,18 +59,10 @@ def get_env_list(key: str) -> list:
         raise
 
 
-def extract_username_from_location(location: str) -> str:
-    if not location:
+def username_from_email(email: str) -> str:
+    if not email or "@" not in email:
         return ""
-    match = re.search(r"/user/([^/]+)/", location)
-    return match.group(1) if match else ""
-
-
-def extract_hub_base_url(location: str) -> str:
-    if not location or not location.startswith(("http://", "https://")):
-        return ""
-    parsed = urlsplit(location)
-    return f"{parsed.scheme}://{parsed.netloc}"
+    return email.split("@", 1)[0].strip()
 
 # Global error handler to surface Python tracebacks to logs and client
 @app.errorhandler(Exception)
@@ -197,18 +188,8 @@ def miloh():
 
         student_code = "none"
         if question_category in assignment_categories:
-            student_username = (
-                input_dict.get("student")
-                or input_dict.get("user")
-                or input_dict.get("hub_user")
-                or extract_username_from_location(input_dict.get("location", ""))
-                or extract_username_from_location(input_dict.get("assignment", ""))
-            )
-            hub_url = (
-                os.getenv("JUPYTERHUB_URL")
-                or extract_hub_base_url(input_dict.get("location", ""))
-                or extract_hub_base_url(input_dict.get("assignment", ""))
-            )
+            student_username = username_from_email(input_dict.get("student_email", ""))
+            hub_url = os.getenv("JUPYTERHUB_URL")
             hub_api_key = os.getenv("JUPYTERHUB_API_TOKEN")
             if student_username and hub_url and hub_api_key:
                 try:
@@ -227,7 +208,7 @@ def miloh():
                     logger.warning("miloh: student code retrieval failed\n%s", format_exc())
             else:
                 logger.info(
-                    "miloh: student code retrieval skipped (user=%s hub_url=%s api_key=%s)",
+                    "miloh: student code retrieval skipped (student_email=%s hub_url=%s api_key=%s)",
                     "yes" if student_username else "no",
                     "yes" if hub_url else "no",
                     "yes" if hub_api_key else "no",

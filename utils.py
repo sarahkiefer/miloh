@@ -427,7 +427,7 @@ def find_notebook_path(session: requests.Session, server_base: str, assignment: 
     if assignment.endswith(".ipynb"):
         return assignment
 
-    for root in ["fa25-student", ""]:
+    for root in ["sp26-student", ""]:
         for subdir, filename in _guess_assignment_candidates(assignment):
             candidate = f"{root}/{subdir}/{filename}".strip("/")
             meta = _contents_get(session, server_base, candidate, timeout=timeout, content=0)

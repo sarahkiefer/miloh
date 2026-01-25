@@ -2,6 +2,10 @@
 
 Edison is a RAG + LLM-based pipeline used to generate answers to student questions on large course discussion forums.
 
+## Routes
+
+This repo is focused on the `/miloh` Flask route only. No other HTTP routes are supported.
+
 ## Dependencies
 
 This repo uses split dependency files to keep the deployed Flask app slim while still supporting local notebooks/scripts.
