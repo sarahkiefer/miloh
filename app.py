@@ -4,6 +4,7 @@ import ast
 import logging
 from typing import Dict, Any
 from flask import Flask, request, jsonify
+from werkzeug.exceptions import HTTPException
 from dotenv import load_dotenv
 from traceback import format_exc
 
@@ -67,8 +68,20 @@ def username_from_email(email: str) -> str:
 # Global error handler to surface Python tracebacks to logs and client
 @app.errorhandler(Exception)
 def _unhandled(e):
+    if isinstance(e, HTTPException):
+        return e
     logger.error("UNHANDLED %s %s\n%s", request.method, request.path, format_exc())
     return jsonify(error="Internal Server Error", detail=str(e)), 500
+
+
+@app.route('/', methods=['GET'])
+def _root():
+    return jsonify(status="ok"), 200
+
+
+@app.route('/robots933456.txt', methods=['GET'])
+def _robots_probe():
+    return ("", 204)
 
 # Miloh Office Hours Extension
 @app.route('/miloh', methods=['POST'])
