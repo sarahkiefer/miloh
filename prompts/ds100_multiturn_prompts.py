@@ -112,10 +112,7 @@ def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs:
     Conversation History and Student question:
     {processed_conversation}
     ==========================================
-    You are advising a teaching assistant. From the conversation and retrieved notes/solutions/QA, list the top 3 likely code issues the student has, ranked. If helpful, include links to relevant course notes or resources in the evidence or check fields.
-    Output only a numbered list (1-3). Each item must be one line using this template:
-    <Issue label> | conf=<high/med/low> | evidence=<key clue> | check=<what to inspect/ask> | fix=<high-level direction (no full solution)>
-    Rules: be specific (names/errors/tests/line refs if available). No solutions. If unsure, set conf=low and make check ask for the missing confirming detail."""
+    Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided assignment solutions and historical question-answer pairs. Do not repeat what has already been said. Do not give away or directly refer to the solutions."""
     return [
         {"role": "system", "content": assignment_1_system_prompt},
         {"role": "user", "content": assignment_1_few_shot_1_user},
@@ -124,10 +121,10 @@ def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs:
     ]
 
 
-assingment_2_system_prompt = """Given a TA-facing pre-brief, refine it according to the following guidelines:
-1. Preserve the exact output format and ordering.
-2. Revise for concision and clarity without adding solutions.
-3. Keep evidence/check/fix fields specific and actionable for a TA."""
+assingment_2_system_prompt = """Given a student's question and a potential answer, please modify the answer according to the following guidelines:
+1. Revise the answer to make it more concise.
+2. Remove any solutions and solution-revealing hints provided in the original answer, leaving only hints and guiding explanations.
+3. Encourage the student to ask follow-up questions if they need further clarification."""
 assignment_2_few_shot_1_user = """Conversation History and Student question:
 ==========================================
 [
@@ -234,7 +231,7 @@ def get_content_prompt(processed_conversation: str, retrieved_qa_pairs: str, ret
     Conversation History and Student question:
     {processed_conversation}
     ==========================================
-    You are advising a teaching assistant. Provide concise guidance on what to tell the student based on the provided course notes and historical question-answer pairs. Call out likely misconceptions and include links to relevant course notes or resources when available. If you cannot answer from the provided context, say so."""
+    Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided course notes and historical question-answer pairs. Do not repeat what has already been said."""
     return [
         {"role": "system", "content": content_system_prompt},
         {"role": "user", "content": content_few_shot_1_user},
@@ -315,7 +312,7 @@ def get_logistics_prompt(processed_conversation: str, retrieved_qa_pairs: str, r
     Conversation History and Student question:
     {processed_conversation}
     ==========================================
-    You are advising a teaching assistant. Provide concise guidance on what to tell the student based on the provided syllabus sections and historical question-answer pairs. Include links to relevant course resources when available. If you cannot answer from the provided context, say so."""
+    Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided syllabus sections and historical question-answer pairs. Do not repeat what has already been said."""
     return [
         {"role": "system", "content": logistics_system_prompt},
         {"role": "user", "content": logistics_few_shot_1_user},
@@ -408,7 +405,7 @@ def get_worksheet_prompt(processed_conversation: str, retrieved_qa_pairs: str, r
     Conversation History and Student question:
     {processed_conversation}
     ==========================================
-    You are advising a teaching assistant. Provide concise guidance on what to tell the student based on the provided solutions, course notes, and historical question-answer pairs. Do not give away the solution; provide hints and explanations only. Include links to relevant course notes or resources when available."""
+    Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided solutions, course notes, and historical question-answer pairs. Do not repeat what has already been said. Do not give away the solution, only provide hints and explanations."""
     return [
         {"role": "system", "content": worksheet_system_prompt},
         {"role": "user", "content": worksheet_few_shot_1_user},
