@@ -35,13 +35,13 @@ def get_summarize_conversation_prompt(conversation: list) -> list:
     return summarize_conversation_prompt + [{'role': 'user', 'content': str(conversation)}]
 
 
-assignment_1_system_prompt = """You will simulate the role of a teaching assistant for an undergraduate data science course, answering assignment-related questions. 
-(1) Your responses should be clear, helpful, and maintain a positive tone.
-(2) Your goal is to guide the student to the correct answer. Do not give away the solution to the question or directly reference the solutions; only provide hints and explanations.
-(3) Aim for conciseness and clarity.
-(4) Use the provided assignment instructions and solutions and similar historical question-answer pairs as your primary source of information.
-(5) If you need additional context and information, ask the student for clarification.
-(6) If the question is difficult to answer based on the provided context, reply, "Sorry, I do not know. Please wait for a staff member's response." """
+assignment_1_system_prompt = """You are assisting a teaching assistant (TA) during office hours. The TA has a student ticket and needs actionable guidance.
+(1) Write TA-facing notes, not student-facing replies.
+(2) Be explicit about what the student did wrong and how to fix it. Give concrete fixes, including corrected code snippets if helpful.
+(3) Prioritize the student's code as the primary evidence; use solutions/QA to verify correctness or fill gaps.
+(4) Provide a short, structured checklist of what the TA should do next (e.g., what to ask, what to point out, what to verify).
+(5) Aim for conciseness and clarity, but do not omit critical steps.
+(6) If context is insufficient, list the exact missing info the TA should request. """
 assignment_1_few_shot_1_user = """Here are the relevant sections from the assignment solutions to guide your response:
 ==========================================
 Assignment solutions
@@ -83,36 +83,41 @@ Conversation History and Student question:
     {"role": "Student", "text": "Sorry, I still couldn't really figure it out... could you please point out where the issue is?", "image context": ""},
 ]
 ==========================================
-Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided assignment solutions and historical question-answer pairs. Do not repeat what has already been said. Do not give away or directly refer to the solutions.
+Given the conversation between the student and the TA, write TA-facing guidance that diagnoses the student's mistake and suggests a concrete fix. Use the student's code as primary evidence.
 """
-assignment_1_few_shot_1_assistant = """Sure! The problem is with the nested capturing groups in your regex pattern. 
-We want to capture the full sentence, but the way it's set up now, it's capturing both the full sentence and 'microsoft' or 'msft.' 
-I hope this hint was helpful. Feel free to follow up if you have further questions!"""
+assignment_1_few_shot_1_assistant = """TA notes:
+- Diagnosis: The student's regex has nested capturing groups, so `findall` returns tuples of captured groups instead of the full sentence. This breaks `str.get(0)` and yields partial matches.
+- Fix: Use non-capturing groups or remove inner parentheses so the entire sentence is the match. Example: `r"[^.!?]*(?:microsoft|msft)[^.!?]*[.!?]"`.
+- Verification: Confirm they lowercased the content before applying the regex and that they take the first match per article.
+Next steps for TA:
+1. Ask if they intended to use capturing groups; explain `findall` behavior with capture groups.
+2. Suggest updating the regex and re-running on a small sample to verify `first_sentence` looks right."""
 
 
 def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs: str,
                                 retrieved_docs_manual: str, student_code: str) -> list:
-    curr_prompt = f"""Here are the relevant excerpts from the assignment solutions to guide your response:
-    ==========================================
-    {retrieved_docs_manual}
-    ==========================================
+    curr_prompt = f"""==========================================
+Student's assignment code (primary evidence):
+==========================================
+{student_code}
+==========================================
 
-    Here are similar historical question-answer pairs to guide your response:
-    ==========================================
-    {retrieved_qa_pairs}
-    ==========================================
+==========================================
+Conversation History and Student question:
+{processed_conversation}
+==========================================
 
-    ==========================================
-    Student's assignment code (if available):
-    ==========================================
-    {student_code}
-    ==========================================
+Here are the relevant excerpts from the assignment solutions to guide your response:
+==========================================
+{retrieved_docs_manual}
+==========================================
 
-    ==========================================
-    Conversation History and Student question:
-    {processed_conversation}
-    ==========================================
-    Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided assignment solutions and historical question-answer pairs. Do not repeat what has already been said. Do not give away or directly refer to the solutions."""
+Here are similar historical question-answer pairs to guide your response:
+==========================================
+{retrieved_qa_pairs}
+==========================================
+
+Write TA-facing guidance that diagnoses the student's mistake and suggests concrete fixes. Include a short checklist of how the TA should approach the ticket."""
     return [
         {"role": "system", "content": assignment_1_system_prompt},
         {"role": "user", "content": assignment_1_few_shot_1_user},
@@ -121,10 +126,10 @@ def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs:
     ]
 
 
-assingment_2_system_prompt = """Given a student's question and a potential answer, please modify the answer according to the following guidelines:
-1. Revise the answer to make it more concise.
-2. Remove any solutions and solution-revealing hints provided in the original answer, leaving only hints and guiding explanations.
-3. Encourage the student to ask follow-up questions if they need further clarification."""
+assingment_2_system_prompt = """Given the TA-facing guidance and the original ticket context, refine the response using the following guidelines:
+1. Make it concise but keep all concrete fixes and key diagnostics.
+2. Ensure the response is clearly TA-facing (notes/checklist), not a student reply.
+3. Add or tighten a short checklist of next steps for the TA if missing."""
 assignment_2_few_shot_1_user = """Conversation History and Student question:
 ==========================================
 [
@@ -154,7 +159,7 @@ def get_second_assignment_prompt(processed_conversation: str, first_answer: str)
     {processed_conversation}
     ==========================================
 
-    Answer:
+    TA-facing guidance draft:
     ==========================================
     {first_answer}
     =========================================="""
