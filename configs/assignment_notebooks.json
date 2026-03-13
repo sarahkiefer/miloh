@@ -1,0 +1,5 @@
+{
+  "homework": ["hw01", "hw02A", "hw02B", "hw03", "hw04", "hw06", "hw07"],
+  "project": ["projA1", "projA2", "projB1", "projB2"],
+  "lab": ["lab01", "lab02A", "lab02B", "lab03", "lab04", "lab05", "lab06", "lab07", "lab08", "lab09", "lab10", "lab11", "lab12", "lab13"]
+}

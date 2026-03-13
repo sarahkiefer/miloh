@@ -25,6 +25,12 @@ Local/dev install (for notebooks/scripts):
 pip install -r requirements-dev.txt
 ```
 
+## Assignment notebook catalog
+
+Notebook discovery can normalize user-facing assignment names (like "Homework 1" or "Project A2") using a catalog file.
+By default it reads `configs/assignment_notebooks.json`. To override per class/environment, set
+`ASSIGNMENT_NOTEBOOK_CATALOG` to a different JSON file path (absolute or repo-relative).
+
 ## 🚀 FOR UC BERKELEY STUDENTS ONLY
 
 If you are interested in joining this project and/or have some ideas of your own to contribute, please fill this out:

@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Callable, Optional
 from datetime import datetime
+from functools import lru_cache
 from xml.etree import ElementTree as ET
 from urllib.parse import urljoin, quote
 
@@ -393,7 +394,90 @@ def _contents_get(session: requests.Session, server_base: str, api_path: str, ti
     return response.json()
 
 
+@lru_cache(maxsize=1)
+def _load_assignment_catalog() -> Dict[str, List[str]]:
+    catalog_path = os.getenv("ASSIGNMENT_NOTEBOOK_CATALOG", "configs/assignment_notebooks.json")
+    base_dir = Path(__file__).resolve().parent
+    path = Path(catalog_path)
+    if not path.is_absolute():
+        path = base_dir / path
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text())
+    except Exception as exc:
+        logger.warning("Failed to read assignment catalog at %s: %s", path, exc)
+        return {}
+    if not isinstance(payload, dict):
+        logger.warning("Assignment catalog at %s is not a JSON object.", path)
+        return {}
+    catalog: Dict[str, List[str]] = {}
+    for key, value in payload.items():
+        if isinstance(value, list):
+            catalog[key] = [v for v in value if isinstance(v, str)]
+    return catalog
+
+
+def _normalize_assignment_stems(assignment: str) -> List[str]:
+    raw = assignment.strip()
+    if not raw:
+        return []
+
+    catalog = _load_assignment_catalog()
+    lookup: Dict[str, str] = {}
+    for stems in catalog.values():
+        for stem in stems:
+            lookup[stem.lower()] = stem
+
+    lower = raw.lower()
+    if lower in lookup:
+        return [lookup[lower]]
+
+    normalized = re.sub(r"[\s_-]+", " ", lower).strip()
+    compact = re.sub(r"[\s_-]+", "", lower).strip()
+
+    hw_lab_match = re.match(r"^(homework|hw|lab)\s*(\d+)([a-z])?$", normalized)
+    if not hw_lab_match:
+        hw_lab_match = re.match(r"^(homework|hw|lab)(\d+)([a-z])?$", compact)
+    if hw_lab_match:
+        kind, num, suffix = hw_lab_match.groups()
+        prefix = "hw" if kind in ("homework", "hw") else "lab"
+        stem = f"{prefix}{int(num):02d}{(suffix or '').upper()}"
+        if stem.lower() in lookup:
+            return [lookup[stem.lower()]]
+        return [stem]
+
+    proj_match = re.match(r"^(project|proj)\s*([a-z])(\d+)$", normalized)
+    if not proj_match:
+        proj_match = re.match(r"^(project|proj)([a-z])(\d+)$", compact)
+    if proj_match:
+        _, letter, num = proj_match.groups()
+        stem = f"proj{letter.upper()}{int(num)}"
+        if stem.lower() in lookup:
+            return [lookup[stem.lower()]]
+        return [stem]
+
+    return []
+
+
+def _stems_to_candidates(stems: List[str]) -> List[tuple]:
+    folders = {"hw": "hw", "lab": "lab", "proj": "proj", "disc": "disc"}
+    candidates: List[tuple] = []
+    for stem in stems:
+        lower = stem.lower()
+        kind = next((k for k in folders if lower.startswith(k)), "")
+        folder = folders.get(kind, kind or lower)
+        subdirs = [f"{folder}/{stem}", f"{folder}"]
+        files = [f"{stem}.ipynb", f"{stem}_starter.ipynb", f"{stem}_released.ipynb"]
+        candidates.extend((sd, fn) for sd in subdirs for fn in files)
+    return candidates
+
+
 def _guess_assignment_candidates(assignment: str) -> List[tuple]:
+    stems = _normalize_assignment_stems(assignment)
+    if stems:
+        return _stems_to_candidates(stems)
+
     a = assignment.strip().lower()
     match = re.match(r"(hw|lab|proj|disc)(\d+)?", a)
     if not match:
