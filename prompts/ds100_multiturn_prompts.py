@@ -37,11 +37,19 @@ def get_summarize_conversation_prompt(conversation: list) -> list:
 
 assignment_1_system_prompt = """You are assisting a teaching assistant (TA) during office hours. The TA has a student ticket and needs actionable guidance.
 (1) Write TA-facing notes, not student-facing replies.
-(2) Be explicit about what the student did wrong and how to fix it. Give concrete fixes, including corrected code snippets if helpful.
-(3) Prioritize the student's code as the primary evidence; use solutions/QA to verify correctness or fill gaps.
-(4) Provide a short, structured checklist of what the TA should do next (e.g., what to ask, what to point out, what to verify).
-(5) Aim for conciseness and clarity, but do not omit critical steps.
-(6) If context is insufficient, list the exact missing info the TA should request. """
+(2) Keep "Problem" and "Fix" short and direct (1–3 sentences each). Any walkthrough belongs in the checklist.
+(3) Acknowledge uncertainty: include a confidence label and list multiple possible problems when needed.
+(4) Prioritize the student's code as the primary evidence; use solutions/QA to verify correctness or fill gaps.
+(5) If the student's code section is empty or missing, do NOT ask the student for code. State that no code was provided and proceed using the retrieved docs/QA plus explicit assumptions.
+(6) Provide a short, structured checklist of what the TA should do next. Use a numbered Markdown list with each step on its own line.
+(7) Any code must be shown in a fenced diff block (```diff). Use -/+ lines to show edits; if you only have a suggestion, prefix lines with +.
+(8) Aim for conciseness and clarity, but do not omit critical steps.
+Format exactly:
+Problem: ...
+Fix: ... (Confidence: low|medium|high)
+Checklist:
+1. ...
+2. ..."""
 assignment_1_few_shot_1_user = """Here are the relevant sections from the assignment solutions to guide your response:
 ==========================================
 Assignment solutions
@@ -85,13 +93,16 @@ Conversation History and Student question:
 ==========================================
 Given the conversation between the student and the TA, write TA-facing guidance that diagnoses the student's mistake and suggests a concrete fix. Use the student's code as primary evidence.
 """
-assignment_1_few_shot_1_assistant = """TA notes:
-- Diagnosis: The student's regex has nested capturing groups, so `findall` returns tuples of captured groups instead of the full sentence. This breaks `str.get(0)` and yields partial matches.
-- Fix: Use non-capturing groups or remove inner parentheses so the entire sentence is the match. Example: `r"[^.!?]*(?:microsoft|msft)[^.!?]*[.!?]"`.
-- Verification: Confirm they lowercased the content before applying the regex and that they take the first match per article.
-Next steps for TA:
-1. Ask if they intended to use capturing groups; explain `findall` behavior with capture groups.
-2. Suggest updating the regex and re-running on a small sample to verify `first_sentence` looks right."""
+assignment_1_few_shot_1_assistant = """Problem: The regex uses capturing groups, so `findall` returns tuples instead of full sentences.
+Fix: Use a non-capturing group so the whole sentence is matched. (Confidence: high)
+Checklist:
+1. Explain that `findall` returns captured groups instead of full matches when parentheses are used.
+2. Walk through why `(?:...)` keeps grouping without capturing.
+3. Suggest re-running on a small sample to confirm `first_sentence` contains full sentences.
+```diff
+- microsoft_re = r"[^.!?]*(microsoft|msft)[^.?!]*[.!?]"
++ microsoft_re = r"[^.!?]*(?:microsoft|msft)[^.?!]*[.!?]"
+```"""
 
 
 def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs: str,
@@ -127,9 +138,12 @@ Write TA-facing guidance that diagnoses the student's mistake and suggests concr
 
 
 assingment_2_system_prompt = """Given the TA-facing guidance and the original ticket context, refine the response using the following guidelines:
-1. Make it concise but keep all concrete fixes and key diagnostics.
-2. Ensure the response is clearly TA-facing (notes/checklist), not a student reply.
-3. Add or tighten a short checklist of next steps for the TA if missing."""
+1. Preserve the exact output format (Problem/Fix/Checklist, with confidence at the end of Fix).
+2. Keep Problem and Fix short and direct (1–3 sentences each).
+3. Ensure the response is clearly TA-facing (notes/checklist), not a student reply.
+4. If multiple plausible issues exist, list them in Problem and keep the confidence label.
+5. Ensure each checklist step is on its own numbered Markdown line.
+6. Keep any code in fenced diff blocks (```diff)."""
 assignment_2_few_shot_1_user = """Conversation History and Student question:
 ==========================================
 [
