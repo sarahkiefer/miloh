@@ -14,6 +14,7 @@ from utils import (
     retrieve_qa,
     retrieve_docs_hybrid,
     retrieve_docs_manual,
+    retrieve_docs_manual_chunks,
     generate,
     log_blob,
     log_local,
@@ -79,21 +80,6 @@ def _root():
     return jsonify(status="ok"), 200
 
 
-    # Conversation processing (OCR)
-    fields = ["thread_title", "category", "subcategory", "subsubcategory"]
-    metadata = [input_dict.get(f, "") for f in fields]
-    metadata_str = " | ".join(f"{f}: {val}" for f, val in zip(fields, metadata) if val)
-    logger.info("Metadata string: %s", metadata_str)
-    processed_conversation = ocr_process_input(
-        metadata=metadata_str,
-        conversation_history=input_dict.get("conversation_history")
-    )
-    # processed_conversation = ocr_process_input(
-    #     thread_title=input_dict.get('thread_title'),
-    #     conversation_history=input_dict.get('conversation_history'),
-    # )
-    logger.info('Processed conversation: %s', processed_conversation)
-
 @app.route('/robots933456.txt', methods=['GET'])
 def _robots_probe():
     return ("", 204)
@@ -102,117 +88,20 @@ def _robots_probe():
 @app.route('/miloh', methods=['POST'])
 def miloh():
     """
-    Minimal additional endpoint to handle the new Office Hour extension's JSON:
+    Handle the Office Hours extension payload and return TA-facing guidance.
+
+    Expected JSON:
     {
       "assignment": "string",
       "question": "string",
       "location": "string",
       "description": "string",
       "chat": ["string", ...]
-    # QA retrieval
-    top_k = int(os.getenv('QA_TOP_K', '3'))
-    retrieved_qa_pairs = retrieve_qa(conversation=processed_conversation_search, top_k=top_k)
-    logger.info('Retrieved QA pairs: %s', retrieved_qa_pairs)
-
-    # Hybrid document retrieval
-    retrieved_docs_hybrid = 'none'
-    if question_category in content_categories:
-        retrieved_docs_hybrid = retrieve_docs_hybrid(
-            text=processed_conversation_search,
-            index_name=os.getenv('CONTENT_INDEX_NAME'),
-            top_k=int(os.getenv('CONTENT_INDEX_TOP_K', '1')),
-            semantic_reranking=True
-        )
-    elif question_category in logistics_categories:
-        retrieved_docs_hybrid = retrieve_docs_hybrid(
-            text=processed_conversation_search,
-            index_name=os.getenv('LOGISTICS_INDEX_NAME'),
-            top_k=int(os.getenv('LOGISTICS_INDEX_TOP_K', '1')),
-            semantic_reranking=False
-        )
-    elif question_category in worksheet_categories:
-        retrieved_docs_hybrid = retrieve_docs_hybrid(
-            text=processed_conversation_search,
-            index_name=os.getenv('WORKSHEET_INDEX_NAME'),
-            top_k=int(os.getenv('WORKSHEET_INDEX_TOP_K', '1')),
-            semantic_reranking=True
-        )
-    logger.info('Retrieved hybrid documents: %s', retrieved_docs_hybrid)
-
-    # Manual document retrieval
-    problem_list_manual = selected_doc_manual = retrieved_docs_manual = 'none'
-    if question_category in (assignment_categories + worksheet_categories):
-    #     question_info = re.sub(r"\n+", " ", f"{question_category} {input_dict.get('subcategory')} {input_dict.get('subsubcategory')} {input_dict.get('thread_title')} \
-    #                            {processed_conversation[-1]['text'] if len(processed_conversation) <= 2 else processed_conversation[0]['text'] + processed_conversation[-1]['text']}")
-    #     problem_list_manual, selected_doc_manual, retrieved_docs_manual = retrieve_docs_manual(
-    #         question_category=question_category,
-    #         category_mapping=ast.literal_eval(os.getenv('CATEGORY_MAPPING', '{}')),
-    #         question_subcategory=input_dict.get('subcategory'),
-    #         subcategory_mapping=ast.literal_eval(os.getenv('SUBCATEGORY_MAPPING', '{}')),
-    #         question_info=question_info,
-    #         get_prompt=prompts.get_choose_problem_path_prompt)
-    #     logger.info('List of problems: %s', problem_list_manual)
-    #     logger.info('Selected manual document: %s', selected_doc_manual)
-        retrieved_docs_manual, gpt_num_called = manual_retrieval(processed_conversation_search)
-        logger.info('Retrieved manual documents: %s', retrieved_docs_manual)
-
-    # Response generation
-    response_0 = response = ''
-    if question_category in assignment_categories:
-        response_0 = generate(
-            prompt=prompts.get_first_assignment_prompt(
-                processed_conversation=processed_conversation,
-                retrieved_qa_pairs=retrieved_qa_pairs,
-                retrieved_docs_manual=retrieved_docs_manual
-            )
-        )
-        logger.info('Initial response (assignment question): %s', response_0)
-        response = generate(
-            prompt=prompts.get_second_assignment_prompt(
-                processed_conversation=processed_conversation,
-                first_answer=response_0
-            )
-        )
-    elif question_category in content_categories:
-        response = generate(
-            prompt=prompts.get_content_prompt(
-                processed_conversation=processed_conversation,
-                retrieved_qa_pairs=retrieved_qa_pairs,
-                retrieved_docs_hybrid=retrieved_docs_hybrid
-            )
-        )
-    elif question_category in logistics_categories:
-        response = generate(
-            prompt=prompts.get_logistics_prompt(
-                processed_conversation=processed_conversation,
-                retrieved_qa_pairs=retrieved_qa_pairs,
-                retrieved_docs_hybrid=retrieved_docs_hybrid
-            )
-        )
-    elif question_category in worksheet_categories:
-        response = generate(
-            prompt=prompts.get_worksheet_prompt(
-                processed_conversation=processed_conversation,
-                retrieved_qa_pairs=retrieved_qa_pairs,
-                retrieved_docs_manual=retrieved_docs_manual,
-                retrieved_docs_hybrid=retrieved_docs_hybrid
-            )
-         )
-    logger.info('Final response: %s', response)
-    
-    # Logging and posting
-    output_dict = {
-        'processed_conversation': processed_conversation,
-        'processed_conversation_search': processed_conversation_search,
-        'retrieved_qa_pairs': retrieved_qa_pairs,
-        'retrieved_docs_hybrid': retrieved_docs_hybrid,
-        'problem_list_manual': problem_list_manual,
-        'selected_doc_manual': selected_doc_manual,
-        'retrieved_docs_manual': retrieved_docs_manual,
-        'response_0': response_0,
-        'response': response
+      "student_email": "string"
     }
-    Calls the LLM and returns the response.
+
+    Returns:
+      {"Miloh": "<response text>"}
     """
     try:
         if request.headers.get('Authorization') != os.getenv('API_KEY'):
@@ -382,7 +271,39 @@ def miloh():
         # Manual document retrieval
         problem_list_manual = selected_doc_manual = retrieved_docs_manual = 'none'
         try:
-            if question_category in (assignment_categories + worksheet_categories):
+            if question_category in assignment_categories:
+                try:
+                    question_info = re.sub(
+                        r"\n+",
+                        " ",
+                        f"{question_category} "
+                        f"{input_dict.get('assignment', '')} "
+                        f"{input_dict.get('question', '')} "
+                        f"{input_dict.get('description', '')} "
+                        f"{processed_conversation[-1]['text'] if len(processed_conversation) <= 2 else processed_conversation[0]['text'] + processed_conversation[-1]['text']}"
+                    )
+                except Exception:
+                    logger.error("miloh: building question_info crashed\n%s", format_exc())
+                    raise
+
+                try:
+                    problem_list_manual, selected_doc_manual, retrieved_docs_manual = retrieve_docs_manual_chunks(
+                        question_category=question_category,
+                        category_mapping=ast.literal_eval(os.getenv('CATEGORY_MAPPING', '{}')),
+                        question_subcategory=input_dict.get('subcategory'),
+                        subcategory_mapping=ast.literal_eval(os.getenv('SUBCATEGORY_MAPPING', '{}')),
+                        question_info=question_info,
+                        get_prompt=prompts.get_choose_problem_path_prompt,
+                        chunk_top_k=int(os.getenv("MANUAL_CHUNKS_TOP_K", "4"))
+                    )
+                except Exception:
+                    logger.error("miloh: retrieve_docs_manual_chunks crashed\n%s", format_exc())
+                    raise
+
+                logger.info('List of problems: %s', problem_list_manual)
+                logger.info('Selected manual document: %s', selected_doc_manual)
+                logger.info('Retrieved manual chunks: %s', retrieved_docs_manual)
+            elif question_category in worksheet_categories:
                 try:
                     question_info = re.sub(
                         r"\n+",
