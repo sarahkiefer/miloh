@@ -294,7 +294,8 @@ def miloh():
                         subcategory_mapping=ast.literal_eval(os.getenv('SUBCATEGORY_MAPPING', '{}')),
                         question_info=question_info,
                         get_prompt=prompts.get_choose_problem_path_prompt,
-                        chunk_top_k=int(os.getenv("MANUAL_CHUNKS_TOP_K", "4"))
+                        chunk_top_k=int(os.getenv("MANUAL_CHUNKS_TOP_K", "4")),
+                        assignment=input_dict.get('assignment', '')
                     )
                 except Exception:
                     logger.error("miloh: retrieve_docs_manual_chunks crashed\n%s", format_exc())

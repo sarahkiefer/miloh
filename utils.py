@@ -362,9 +362,51 @@ def _select_chunks_by_overlap(chunks: Iterable[str], question: str, top_k: int) 
     return selected
 
 
+def _normalize_chunk_selection(selected_path: str, assignment: str, question_category: str,
+                               problem_paths_list: List[str]) -> str:
+    if not selected_path or selected_path == 'none':
+        return 'none'
+
+    candidates = {p.lower(): p for p in problem_paths_list if isinstance(p, str)}
+
+    base = selected_path.split('/')[-1]
+    if not base.lower().endswith('.json'):
+        base = f"{base}.json"
+    if base.lower() in candidates:
+        return candidates[base.lower()]
+
+    prefix_map = {
+        "Homeworks": "hw",
+        "Labs": "lab",
+        "Projects": "proj",
+        "Discussions": "disc",
+        "Exams": "exam",
+    }
+    prefix = prefix_map.get(question_category)
+
+    if assignment:
+        # Prefer patterns like A2, 02A, 10, 10B
+        token = None
+        match = re.search(r"\b([A-Za-z]\d+[A-Za-z]?)\b", assignment)
+        if match:
+            token = match.group(1)
+        if token is None:
+            match = re.search(r"\b(\d+[A-Za-z]?)\b", assignment)
+            if match:
+                token = match.group(1)
+        if token and token.isdigit() and len(token) < 2:
+            token = token.zfill(2)
+        if prefix and token:
+            candidate = f"{prefix}{token}.json"
+            if candidate.lower() in candidates:
+                return candidates[candidate.lower()]
+
+    return 'none'
+
+
 def retrieve_docs_manual_chunks(question_category: str, category_mapping: dict, question_subcategory: str,
                                 subcategory_mapping: dict, question_info: str, get_prompt: Callable[[List, str], List],
-                                chunk_top_k: int = 4) -> tuple:
+                                chunk_top_k: int = 4, assignment: str = "") -> tuple:
     """
     Retrieve and return relevant chunks from a chunked JSON document in Azure Blob Storage.
 
@@ -372,10 +414,8 @@ def retrieve_docs_manual_chunks(question_category: str, category_mapping: dict, 
         tuple: A tuple containing the problem paths list, selected path, and retrieved chunk content.
     """
     problem_paths_list = 'none'
-    if question_category in category_mapping:
-        problem_paths_list = get_file_names_dir(f'docs_manual/{category_mapping[question_category]}')
-    elif question_subcategory in subcategory_mapping:
-        problem_paths_list = get_file_names_dir(f'docs_manual/{subcategory_mapping[question_subcategory]}')
+    # Chunk files live under docs_manual/chunks as flat JSON files.
+    problem_paths_list = get_file_names_dir('docs_manual/chunks')
 
     prompt = get_prompt(paths='\n'.join(problem_paths_list),
                         question_info=re.sub(pattern=r"\n+", repl=" ", string=question_info))
@@ -390,32 +430,43 @@ def retrieve_docs_manual_chunks(question_category: str, category_mapping: dict, 
         logger.error(f"Processed question: {processed_question}")
         selected_path = 'none'
 
-    if selected_path != 'none' and (len(selected_path.split('/')) == 1 or selected_path.split('/')[-1] == ''):
-        selected_paths = [
-            path for path in problem_paths_list
-            if selected_path in path and ('setup' in path.split('/')[-1].lower() or 'index' in path.split('/')[-1].lower())
-        ]
-        selected_path = selected_paths[0] if selected_paths else 'none'
+    selected_path = _normalize_chunk_selection(
+        selected_path=selected_path,
+        assignment=assignment,
+        question_category=question_category,
+        problem_paths_list=problem_paths_list
+    )
 
     if selected_path != 'none':
         try:
             chunk_prefix = os.getenv("MANUAL_CHUNKS_PREFIX", "docs_manual/chunks").rstrip("/")
-            if question_category in category_mapping:
-                base_dir = category_mapping[question_category]
-            elif question_subcategory in subcategory_mapping:
-                base_dir = subcategory_mapping[question_subcategory]
-            else:
-                base_dir = ""
-
             rel_path = selected_path
             if not rel_path.endswith(".json"):
                 rel_path = re.sub(r"\.[^.]+$", ".json", rel_path) if "." in rel_path else f"{rel_path}.json"
-            blob_path = f"{chunk_prefix}/{base_dir}/{rel_path}".strip("/")
 
             blob_service_client = BlobServiceClient.from_connection_string(os.getenv('AZURE_STORAGE_CONNECTION_STRING'))
             container_client = blob_service_client.get_container_client(os.getenv('AZURE_BLOB_CONTAINER_NAME'))
-            blob_client = container_client.get_blob_client(blob_path)
-            if not blob_client.exists():
+            blob_path_candidates = [
+                f"{chunk_prefix}/{rel_path}".strip("/"),
+            ]
+            if question_category in category_mapping:
+                blob_path_candidates.append(
+                    f"{chunk_prefix}/{category_mapping[question_category]}/{rel_path}".strip("/")
+                )
+            elif question_subcategory in subcategory_mapping:
+                blob_path_candidates.append(
+                    f"{chunk_prefix}/{subcategory_mapping[question_subcategory]}/{rel_path}".strip("/")
+                )
+
+            blob_client = None
+            selected_blob_path = None
+            for candidate in blob_path_candidates:
+                candidate_client = container_client.get_blob_client(candidate)
+                if candidate_client.exists():
+                    blob_client = candidate_client
+                    selected_blob_path = candidate
+                    break
+            if not blob_client:
                 raise FileNotFoundError("Chunk blob does not exist in the container.")
             chunk_payload = blob_client.download_blob().readall().decode('utf-8')
             chunk_list = json.loads(chunk_payload)
@@ -428,7 +479,9 @@ def retrieve_docs_manual_chunks(question_category: str, category_mapping: dict, 
                 retrieved_docs += f"\n==========================================\nChunk {idx}\n{chunk}"
         except Exception as e:
             retrieved_docs = 'none (error)'
-            logger.error(f"Error retrieving manual chunks: {e} (selected path: {selected_path})")
+            logger.error(
+                f"Error retrieving manual chunks: {e} (selected path: {selected_path}, blob_path: {selected_blob_path})"
+            )
 
     return str(problem_paths_list), selected_path, retrieved_docs
 
