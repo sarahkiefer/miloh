@@ -31,7 +31,7 @@ DEFAULT_JUPYTER_TIMEOUT = 30
 DEFAULT_JUPYTER_SPAWN_TIMEOUT = 90
 
 
-def question_ocr(xml: str) -> str:
+def question_ocr(xml: Optional[str]) -> str:
     """
     Extract text from images embedded in an XML document using Azure's Computer Vision OCR service.
 
@@ -41,8 +41,10 @@ def question_ocr(xml: str) -> str:
     Returns:
         str: A concatenated string of all extracted text from the images in the XML.
     """
+    if not xml:
+        return ""
     computervision_client = ComputerVisionClient(
-        os.getenv('OCR_ENDPOINT'), 
+        os.getenv('OCR_ENDPOINT'),
         CognitiveServicesCredentials(os.getenv('OCR_KEY'))
     )
     root = ET.fromstring(xml)
@@ -102,7 +104,7 @@ def ocr_process_input(metadata: str, conversation_history: List[Dict[str, Any]])
                 else 'TA'
             ),
             'text': process_question(turn['text']) if turn['user_role'].lower() == 'student' else turn['text'],
-            'image_context': question_ocr(turn['document'])
+            'image_context': question_ocr(turn.get('document'))
         }
         for turn in conversation_history
     ]
