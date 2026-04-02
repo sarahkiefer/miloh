@@ -707,18 +707,20 @@ def find_notebook_path(session: requests.Session, server_base: str, assignment: 
 def extract_notebook_code(nb_content: dict) -> str:
     notebook = nb_content.get("content", {}) if isinstance(nb_content, dict) else {}
     cells = notebook.get("cells", []) if isinstance(notebook, dict) else []
-    code_blocks = []
-    for idx, cell in enumerate(cells, start=1):
-        if cell.get("cell_type") != "code":
-            continue
+    parts = []
+    for cell in cells:
+        cell_type = cell.get("cell_type")
         source = cell.get("source", "")
         if isinstance(source, list):
             source = "".join(source)
-        source = source.strip()
+        source = source.rstrip()
         if not source:
             continue
-        code_blocks.append(f"# Cell {idx}\n{source}")
-    return "\n\n".join(code_blocks)
+        if cell_type == "markdown":
+            parts.append(source)
+        elif cell_type == "code":
+            parts.append("```python\n" + source + "\n```")
+    return "\n\n".join(parts)
 
 
 def get_student_assignment_code(
@@ -762,6 +764,7 @@ def get_student_assignment_code(
 
     code = extract_notebook_code(nb_content)
     if max_chars and len(code) > max_chars:
+        logger.warning("Student notebook markdown truncated from %s to %s chars", len(code), max_chars)
         return code[:max_chars].rstrip() + "\n...[truncated]..."
     return code
 
@@ -890,6 +893,7 @@ def get_edstem_token(course: str) -> str:
     course_tokens = {
         'ds100': 'DS100_EDSTEM_KEY',
         'ds100-sp25': 'DS100_EDSTEM_KEY',
+        'ds100-sp26': 'DS100_EDSTEM_KEY',
         'ds8': 'DS8_EDSTEM_KEY',
         'cs61a': 'CS61A_EDSTEM_KEY'
     }
