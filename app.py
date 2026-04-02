@@ -68,6 +68,24 @@ def username_from_email(email: str) -> str:
         return ""
     return email.split("@", 1)[0].strip()
 
+def get_context_signal(input_dict: Dict[str, Any], processed_conversation: list) -> Dict[str, Any]:
+    description = (input_dict.get("description") or "").strip()
+    last_text = ""
+    if processed_conversation:
+        last_text = (processed_conversation[-1].get("text") or "").strip()
+    context_text = " ".join([description, last_text]).strip()
+    try:
+        min_context_chars = int(os.getenv("MIN_CONTEXT_CHARS", "120"))
+    except Exception:
+        min_context_chars = 120
+    context_chars = len(context_text)
+    context_signal = "LOW" if context_chars < min_context_chars else "OK"
+    return {
+        "context_signal": context_signal,
+        "context_chars": context_chars,
+        "min_context_chars": min_context_chars
+    }
+
 # Global error handler to surface Python tracebacks to logs and client
 @app.errorhandler(Exception)
 def _unhandled(e):
@@ -171,6 +189,13 @@ def miloh():
         except Exception:
             logger.error("miloh: ocr_process_input crashed\n%s", format_exc())
             raise
+        context_info = get_context_signal(input_dict, processed_conversation)
+        logger.info(
+            "Context signal: %s (chars=%s, min=%s)",
+            context_info["context_signal"],
+            context_info["context_chars"],
+            context_info["min_context_chars"]
+        )
 
         try:
             processed_conversation_search = process_conversation_search(
@@ -348,7 +373,10 @@ def miloh():
                             processed_conversation=processed_conversation,
                             retrieved_qa_pairs=retrieved_qa_pairs,
                             retrieved_docs_manual=retrieved_docs_manual,
-                            student_code=student_code
+                            student_code=student_code,
+                            context_signal=context_info["context_signal"],
+                            context_chars=context_info["context_chars"],
+                            min_context_chars=context_info["min_context_chars"]
                         )
                     )
                     logger.info('Initial response (assignment question) length=%s', len(response_0 or ''))
@@ -471,7 +499,6 @@ def edison():
     #     conversation_history=input_dict.get('conversation_history'),
     # )
     logger.info('Processed conversation: %s', processed_conversation)
-
     processed_conversation_search = process_conversation_search(
         processed_conversation=processed_conversation,
         prompt_summarize=prompts.get_summarize_conversation_prompt(processed_conversation[:-1])

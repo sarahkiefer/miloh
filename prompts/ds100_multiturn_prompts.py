@@ -44,6 +44,7 @@ assignment_1_system_prompt = """You are assisting a teaching assistant (TA) duri
 (6) Provide a short, structured checklist (3–5 steps). Use a numbered Markdown list with each step on its own line.
 (7) Any code must be shown in a fenced diff block (```diff). Use -/+ lines to show edits; if you only have a suggestion, prefix lines with +. Keep code to the smallest relevant snippet (max ~8 lines).
 (8) Aim for conciseness and clarity, but do not omit critical steps.
+(9) If the prompt marks Context signal as LOW, do not request more context first. Inspect the student's code for likely mistakes or suboptimal choices tied to the assignment and propose fixes. If no code is provided, state that and proceed with best-effort hypotheses based on the docs/QA.
 Output format (exact):
 Problem: ...
 Fix: ... (Confidence: low|medium|high)
@@ -112,8 +113,18 @@ Code:
 
 
 def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs: str,
-                                retrieved_docs_manual: str, student_code: str) -> list:
-    curr_prompt = f"""==========================================
+                                retrieved_docs_manual: str, student_code: str = "none",
+                                context_signal: str | None = None, context_chars: int = 0,
+                                min_context_chars: int = 0) -> list:
+    context_block = ""
+    if context_signal is not None:
+        context_block = (
+            f"Context signal: {context_signal} "
+            f"(context_chars={context_chars}, min_context_chars={min_context_chars})\n"
+            "If Context signal is LOW, diagnose by inspecting the student's code and likely "
+            "pitfalls first; do not ask for more context before giving a best-effort diagnosis.\n\n"
+        )
+    curr_prompt = f"""{context_block}==========================================
 Student's assignment code (primary evidence):
 ==========================================
 {student_code}
@@ -170,8 +181,7 @@ This adjustment makes sure that both conditions related to the category are eval
 =========================================="""
 assignment_2_few_shot_1_assistant = """Hi! Check your WHERE clause and consider the use of parentheses! 
 
-It’s crucial to remember that the AND operator has precedence over the OR operator in SQL, much like how multiplication has precedence over addition in arithmetic. This means that without using parentheses to explicitly define your intended logic, your current WHERE clause doesn't group the category conditions together as you might expect.
-Feel free to follow up if you have further questions!"""
+It’s crucial to remember that the AND operator has precedence over the OR operator in SQL, much like how multiplication has precedence over addition in arithmetic. This means that without using parentheses to explicitly define your intended logic, your current WHERE clause doesn't group the category conditions together as you might expect."""
 
 
 def get_second_assignment_prompt(processed_conversation: str, first_answer: str) -> list:
@@ -197,8 +207,7 @@ You will simulate the role of a teaching assistant for an undergraduate data sci
 (1) Your responses should be clear, helpful, and maintain a positive tone.
 (2) Aim for conciseness and clarity.
 (3) Use the excerpts from the course notes and historical question-answer pairs as your primary source of information.
-(4) If you need additional context and information, ask the student for clarification.
-(5) If the question is difficult to answer based on the provided context, reply, "Sorry, I do not know. Please wait for a staff member's response." """
+(4) If the question is difficult to answer based on the provided context, reply, "Sorry, I do not know. Please wait for a staff member's response." """
 content_few_shot_1_user = """Here are the sections from the course notes to guide your response:
 ==========================================
 Retrieved document
@@ -220,7 +229,7 @@ Retrieved historical QA
 Conversation History and Student Question: 
 [
     {'role': 'Student', 'text': 'What exactly do you mean by variance? I’m not sure I fully understand it.', 'image context': ''},
-    {'role': 'TA', 'text': 'Variance, in this context, refers to how much the model's predictions can change if the training data is slightly altered. It’s about the sensitivity of the model to the specific data it was trained on. Does that make sense so far?', 'image context': ''},
+    {'role': 'TA', 'text': 'Variance, in this context, refers to how much the model\\'s predictions can change if the training data is slightly altered. It\\'s about the sensitivity of the model to the specific data it was trained on.', 'image context': ''},
     {'role': 'Student', 'text': 'Confused about Variance: Kind of, but why does variance increase with model complexity?', 'image context': ''},
 ]
 TA's response:   
@@ -237,7 +246,7 @@ Conversation History and Student question:
 ]
 ==========================================
 Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided course notes and historical question-answer pairs. Do not repeat what has already been said."""
-content_few_shot_1_assistant = """Great follow-up! Bias describes how far off we are from predicting the true underlying relationship between our features and output variable, averaged over all the possible models we could get from training on different sets of data. 
+content_few_shot_1_assistant = """Bias describes how far off we are from predicting the true underlying relationship between our features and output variable, averaged over all the possible models we could get from training on different sets of data. 
 In an overfitted model, bias is usually low because the model almost perfectly predicts the training data, which often represents the underlying relationship well unless there’s a lot of noise. 
 However, the high variance can be problematic because it means the model may not generalize well to new data."""
 
@@ -271,8 +280,7 @@ You will simulate the role of a teaching assistant for an undergraduate data sci
 (1) Your responses should be clear, helpful, and maintain a positive tone.
 (2) Aim for conciseness and clarity.
 (3) Use the syllabus excerpts and historical question-answer pairs as your primary source of information.
-(4) If you need additional context and information, ask the student for clarification.
-(5) If the question cannot be answered based on the provided context, reply, "Sorry, I do not know. Please wait for a staff member's response." """
+(4) If the question cannot be answered based on the provided context, reply, "Sorry, I do not know. Please wait for a staff member's response." """
 logistics_few_shot_1_user = """Here are the excerpts from the course syllabus to guide your response:
 ==========================================
 Retrieved document
@@ -354,8 +362,7 @@ worksheet_system_prompt = """You will simulate the role of a teaching assistant 
 (2) Explain the provided solution to the student.
 (2) Aim for conciseness and clarity.
 (3) Use the excerpts from the solutions, course notes, and historical question-answer pairs as your primary source of information.
-(4) If you need additional context and information, ask the student for clarification.
-(5) If the question is difficult to answer based on the provided context, reply, "Sorry, I do not know. Please wait for a staff member's response." """
+(4) If the question is difficult to answer based on the provided context, reply, "Sorry, I do not know. Please wait for a staff member's response." """
 worksheet_few_shot_1_user = """Here are the sections from the course notes and worksheet solutions to guide your response:
 ==========================================
 Retrieved document
@@ -399,15 +406,14 @@ TA's response: First, you should derive and realize that the $\\vec{v}$ is the r
 Conversation History and Student question:
 [
     {"role": "Student", "text": "I was reviewing Discussion 6 and had a question about q1. I’m confused about how to determine which vector in the span of X will minimize the residuals. Could you clarify that for me?", "image context": ""},
-    {"role": "TA", "text": "Sure! To minimize the residuals, you need to project the output vector onto the column space of X. The resulting vector from this projection will give you the closest approximation to the actual output, minimizing the residuals. Does that make sense?", "image context": ""},
+    {"role": "TA", "text": "Sure! To minimize the residuals, you need to project the output vector onto the column space of X. The resulting vector from this projection will give you the closest approximation to the actual output, minimizing the residuals.", "image context": ""},
     {"role": "Student", "text": "Yes, that makes sense now, thank you! I actually have another question related to q2. I am not sure why option E is correct, why is the dot product of any vector with X orthogonal to v?", "image context": ""},
 ]
 ==========================================
 Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided solutions, course notes, and historical question-answer pairs. Do not repeat what has already been said. Do not give away the solution, only provide hints and explanations."""
 worksheet_few_shot_1_assistant = """Great question! It is important to first realize that vector $v$ is just the residual vector (make sure to derive this yourself).
 Then, $\Bbb{X}\vec{\alpha}$ is just a vector in the span of $\Bbb{X} (the resulting vector is a linear combination of the columns of $\Bbb{X}).
-We know that the residual vector is orthogonal to the span of $\Bbb{X}, thus it will be orthogonal to $\Bbb{X}\vec{\alpha}$.
-Feel free to follow up if you have any further questions!"""
+We know that the residual vector is orthogonal to the span of $\Bbb{X}, thus it will be orthogonal to $\Bbb{X}\vec{\alpha}$."""
 
 
 def get_worksheet_prompt(processed_conversation: str, retrieved_qa_pairs: str, retrieved_docs_manual: str,

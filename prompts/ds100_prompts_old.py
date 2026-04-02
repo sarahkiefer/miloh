@@ -99,8 +99,7 @@ Could someone explain why this isn't working? The first part matches one or more
 """
 assignment_1_few_shot_1_assistant="""Hi! That is a great question!
 Your code and logic make sense. However, there is a minor error with your regex pattern.
-We want to capture the full sentence; however, you have nested capturing groups in your regex pattern, which captures both the full sentence and microsoft or msft.
-I hope this hint was helpful. Feel free to follow up if you have further questions!"""
+We want to capture the full sentence; however, you have nested capturing groups in your regex pattern, which captures both the full sentence and microsoft or msft."""
 
 def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs: str, retrieved_docs_manual: str) -> list:
     curr_prompt = f"""Here are the relevant excerpts from the assignment solutions to guide your response:
@@ -127,8 +126,7 @@ def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs:
 
 assingment_2_system_prompt = """Given a student's question and a potential answer, please modify the answer according to the following guidelines:
 1. Revise the answer to make it more concise.
-2. Remove any solutions provided in the original answer, leaving only hints and guiding explanations.
-3. Encourage the student to ask follow-up questions if they need further clarification."""
+2. Remove any solutions provided in the original answer, leaving only hints and guiding explanations."""
 assignment_2_few_shot_1_user = """Student's question:
 ==========================================
 Trouble filtering movies only for question 2
@@ -158,8 +156,7 @@ This adjustment makes sure that both conditions related to the category are eval
 =========================================="""
 assignment_2_few_shot_1_assistant = """Hi! Check your WHERE clause and consider the use of parentheses! 
 
-It’s crucial to remember that the AND operator has precedence over the OR operator in SQL, much like how multiplication has precedence over addition in arithmetic. This means that without using parentheses to explicitly define your intended logic, your current WHERE clause doesn't group the category conditions together as you might expect.
-Feel free to follow up if you have further questions!"""
+It’s crucial to remember that the AND operator has precedence over the OR operator in SQL, much like how multiplication has precedence over addition in arithmetic. This means that without using parentheses to explicitly define your intended logic, your current WHERE clause doesn't group the category conditions together as you might expect."""
 
 def get_second_assignment_prompt(processed_conversation: str, first_answer: str) -> list:
     curr_prompt = f"""Student's question:
@@ -216,8 +213,7 @@ I have a question regarding the increase in variance as model complexity grows: 
 =========================================="""
 content_few_shot_1_assistant = """Great question! The important idea that we want to stress here is that our idea of variance is the variation in our predictions over all the possible models we could get from training on any possible set of training data.
 So, if our model heavily overfits, this means that it will twist and turn itself to perfectly predict our training set. If we collected a different training set and trained the same model, it would churn out vastly different predictions, hence why our variance increases the more that we overfit.
-On the flip side, bias describes how far off we are from predicting the true underlying relationship between our features and output variable averaged over all the possible models we could get from training on any possible set of training data. So if our model almost perfectly predicts our training data every time, and our training data is generated via $g(x) + \epsilon$ where $\mathbb{E}[\epsilon] = 0$, then our model bias $\mathbb{E}[\hat{Y}] - g(x)$ is going to be close to zero.
-Feel free to follow up if you have any further questions!"""
+On the flip side, bias describes how far off we are from predicting the true underlying relationship between our features and output variable averaged over all the possible models we could get from training on any possible set of training data. So if our model almost perfectly predicts our training data every time, and our training data is generated via $g(x) + \epsilon$ where $\mathbb{E}[\epsilon] = 0$, then our model bias $\mathbb{E}[\hat{Y}] - g(x)$ is going to be close to zero."""
 
 def get_content_prompt(processed_conversation: str, retrieved_qa_pairs: str, retrieved_docs_hybrid: str) -> list:
     curr_prompt = f"""Here are the excerpts from the course notes to guide your response:
@@ -366,8 +362,7 @@ I am not sure why option E is correct, why is the dot product of any vector with
 =========================================="""
 worksheet_few_shot_1_assistant = """Great question! It is important to first realize that vector $v$ is just the residual vector (make sure to derive this yourself).
 Then, $\Bbb{X}\vec{\alpha}$ is just a vector in the span of $\Bbb{X} (the resulting vector is a linear combination of the columns of $\Bbb{X}).
-We know that the residual vector is orthogonal to the span of $\Bbb{X}, thus it will be orthogonal to $\Bbb{X}\vec{\alpha}$.
-Feel free to follow up if you have any further questions!"""
+We know that the residual vector is orthogonal to the span of $\Bbb{X}, thus it will be orthogonal to $\Bbb{X}\vec{\alpha}$."""
 
 def get_worksheet_prompt(processed_conversation: str, retrieved_qa_pairs: str, retrieved_docs_manual: str, retrieved_docs_hybrid: str) -> list:
     curr_prompt = f"""Here are the excerpts from the course notes to guide your response:
