@@ -115,7 +115,7 @@ Code:
 def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs: str,
                                 retrieved_docs_manual: str, student_code: str = "none",
                                 context_signal: str | None = None, context_chars: int = 0,
-                                min_context_chars: int = 0) -> list:
+                                min_context_chars: int = 0, question_blank: bool = False) -> list:
     context_block = ""
     if context_signal is not None:
         context_block = (
@@ -124,7 +124,8 @@ def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs:
             "If Context signal is LOW, diagnose by inspecting the student's code and likely "
             "pitfalls first; do not ask for more context before giving a best-effort diagnosis.\n\n"
         )
-    curr_prompt = f"""{context_block}==========================================
+    blank_block = f"Question blank: {question_blank}\n\n"
+    curr_prompt = f"""{context_block}{blank_block}==========================================
 Student's assignment code (primary evidence):
 ==========================================
 {student_code}

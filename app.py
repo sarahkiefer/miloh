@@ -18,6 +18,7 @@ from utils import (
     log_blob,
     log_local,
     get_student_assignment_code,
+    detect_question_blank,
     xml_to_markdown,
     reply_to_ed,
     delete_comment
@@ -257,6 +258,8 @@ def miloh():
                     "yes" if hub_url else "no",
                     "yes" if hub_api_key else "no",
                 )
+        question_blank = detect_question_blank(student_code, input_dict.get("question", ""))
+        logger.info("Question blank: %s", question_blank)
 
         # Hybrid document retrieval
         retrieved_docs_hybrid = 'none'
@@ -376,7 +379,8 @@ def miloh():
                             student_code=student_code,
                             context_signal=context_info["context_signal"],
                             context_chars=context_info["context_chars"],
-                            min_context_chars=context_info["min_context_chars"]
+                            min_context_chars=context_info["min_context_chars"],
+                            question_blank=question_blank
                         )
                     )
                     logger.info('Initial response (assignment question) length=%s', len(response_0 or ''))

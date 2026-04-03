@@ -132,6 +132,32 @@ def process_conversation_search(processed_conversation: List[Dict[str, Any]], pr
         return f"{last_message['image_context']}{last_message['text']}"
 
 
+def detect_question_blank(student_code: str, question: str) -> bool:
+    if not student_code or student_code.startswith("none"):
+        return True
+    q = (question or "").strip().lower()
+    if not q:
+        return False
+    q = re.sub(r"^question\s*", "", q)
+    q = q[1:] if q.startswith("q") else q
+    q = re.sub(r"[^0-9a-z]", "", q)
+    if not q:
+        return False
+    header = re.compile(rf"^\s*(?:##+)?\s*question\s*{q}\b", re.I)
+    lines = student_code.splitlines()
+    for i, line in enumerate(lines):
+        if header.search(line):
+            tail = "\n".join(lines[i + 1:])
+            match = re.search(r"```python\s*([\s\S]*?)```", tail, re.I)
+            if not match:
+                return True
+            code = match.group(1)
+            stripped = re.sub(r"#.*", "", code)
+            stripped = re.sub(r"\bpass\b|\.\.\.|YOUR CODE HERE|raise\s+NotImplementedError", "", stripped, flags=re.I)
+            return stripped.strip() == ""
+    return False
+
+
 def generate(prompt: List[Dict[str, str]], temperature: float = 0.7, top_p: float = 0.95) -> str:
     """
     Send a prompt to an API endpoint of an LLM and retrieve a response.
