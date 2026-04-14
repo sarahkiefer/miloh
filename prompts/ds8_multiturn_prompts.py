@@ -86,8 +86,13 @@ I'd recheck your thought process for getting movies with a rating above 8."""
 
 
 def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs: str,
-                                retrieved_docs_manual: str) -> list:
-    curr_prompt = f"""Here are the relevant excerpts from the assignment solutions to guide your response:
+                                retrieved_docs_manual: str, student_code: str = "none") -> list:
+    curr_prompt = f"""Student's assignment code (if provided):
+    ==========================================
+    {student_code}
+    ==========================================
+
+    Here are the relevant excerpts from the assignment solutions to guide your response:
     ==========================================
     {retrieved_docs_manual}
     ==========================================

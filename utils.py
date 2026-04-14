@@ -5,8 +5,9 @@ import html
 import time
 import json
 import logging
+import inspect
 from pathlib import Path
-from typing import List, Dict, Any, Callable, Optional, Iterable
+from typing import List, Dict, Any, Callable, Optional, Iterable, Tuple, Literal
 from datetime import datetime
 from functools import lru_cache
 from xml.etree import ElementTree as ET
@@ -29,6 +30,8 @@ logger.setLevel(logging.INFO)
 
 DEFAULT_JUPYTER_TIMEOUT = 30
 DEFAULT_JUPYTER_SPAWN_TIMEOUT = 90
+
+StudentCodeSource = Literal["provided", "hub", "skipped", "hub_error"]
 
 
 def question_ocr(xml: Optional[str]) -> str:
@@ -156,6 +159,16 @@ def detect_question_blank(student_code: str, question: str) -> bool:
             stripped = re.sub(r"\bpass\b|\.\.\.|YOUR CODE HERE|raise\s+NotImplementedError", "", stripped, flags=re.I)
             return stripped.strip() == ""
     return False
+
+
+def call_with_accepted_kwargs(fn: Callable[..., Any], /, **kwargs: Any) -> Any:
+    """
+    Call a function while dropping kwargs that it doesn't accept.
+    Useful for prompt modules that don't share identical signatures.
+    """
+    sig = inspect.signature(fn)
+    accepted = {k: v for k, v in kwargs.items() if k in sig.parameters}
+    return fn(**accepted)
 
 
 def generate(prompt: List[Dict[str, str]], temperature: float = 0.7, top_p: float = 0.95) -> str:
@@ -793,6 +806,65 @@ def get_student_assignment_code(
         logger.warning("Student notebook markdown truncated from %s to %s chars", len(code), max_chars)
         return code[:max_chars].rstrip() + "\n...[truncated]..."
     return code
+
+
+def _coerce_student_code(value: Any, max_chars: int) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    code = value.strip()
+    if not code:
+        return None
+    if max_chars and len(code) > max_chars:
+        logger.warning("Provided student_code truncated from %s to %s chars", len(code), max_chars)
+        return code[:max_chars].rstrip() + "\n...[truncated]..."
+    return code
+
+
+def resolve_student_code(
+    *,
+    provided_student_code: Any = None,
+    enable_hub_lookup: bool = False,
+    hub_url: str = "",
+    hub_api_key: str = "",
+    student_username: str = "",
+    assignment: str = "",
+    timeout: int = DEFAULT_JUPYTER_TIMEOUT,
+    spawn_timeout: int = DEFAULT_JUPYTER_SPAWN_TIMEOUT,
+    max_chars: int = 8000,
+) -> Tuple[str, StudentCodeSource]:
+    """
+    Resolve student code from either:
+    1) an explicit payload field (short-circuit), or
+    2) JupyterHub notebook extraction (optional).
+    """
+    provided = _coerce_student_code(provided_student_code, max_chars=max_chars)
+    if provided is not None:
+        return provided, "provided"
+
+    if not enable_hub_lookup:
+        return "none", "skipped"
+
+    if not (student_username and hub_url and hub_api_key):
+        return "none", "skipped"
+
+    try:
+        extracted = get_student_assignment_code(
+            hub_url=hub_url,
+            api_key=hub_api_key,
+            student_username=student_username,
+            assignment=assignment,
+            timeout=timeout,
+            spawn_timeout=spawn_timeout,
+            max_chars=max_chars,
+        ) or "none"
+        return extracted, "hub"
+    except Exception:
+        logger.exception(
+            "Student code hub extraction failed (user=%s assignment=%r)",
+            student_username,
+            assignment,
+        )
+        return "none (error)", "hub_error"
 
 
 def log_local(log_dict: Dict[str, Any], file_path: str) -> None:

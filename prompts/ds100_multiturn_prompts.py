@@ -364,7 +364,7 @@ worksheet_system_prompt = """You will simulate the role of a teaching assistant 
 (2) Aim for conciseness and clarity.
 (3) Use the excerpts from the solutions, course notes, and historical question-answer pairs as your primary source of information.
 (4) If the question is difficult to answer based on the provided context, reply, "Sorry, I do not know. Please wait for a staff member's response." """
-worksheet_few_shot_1_user = """Here are the sections from the course notes and worksheet solutions to guide your response:
+worksheet_few_shot_1_user = r"""Here are the sections from the course notes and worksheet solutions to guide your response:
 ==========================================
 Retrieved document
 ==========================================
@@ -412,7 +412,7 @@ Conversation History and Student question:
 ]
 ==========================================
 Given the conversation between the student and the TA, answer the most recent student question concisely based on the provided solutions, course notes, and historical question-answer pairs. Do not repeat what has already been said. Do not give away the solution, only provide hints and explanations."""
-worksheet_few_shot_1_assistant = """Great question! It is important to first realize that vector $v$ is just the residual vector (make sure to derive this yourself).
+worksheet_few_shot_1_assistant = r"""Great question! It is important to first realize that vector $v$ is just the residual vector (make sure to derive this yourself).
 Then, $\Bbb{X}\vec{\alpha}$ is just a vector in the span of $\Bbb{X} (the resulting vector is a linear combination of the columns of $\Bbb{X}).
 We know that the residual vector is orthogonal to the span of $\Bbb{X}, thus it will be orthogonal to $\Bbb{X}\vec{\alpha}$."""
 

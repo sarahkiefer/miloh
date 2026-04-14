@@ -6,6 +6,14 @@ Edison is a RAG + LLM-based pipeline used to generate answers to student questio
 
 This repo is focused on the `/miloh` Flask route only. No other HTTP routes are supported.
 
+### Optional `student_code` passthrough
+
+`/miloh` accepts an optional top-level JSON field `student_code` (string). If provided and non-empty, it is used directly and the JupyterHub notebook export step is skipped.
+
+Tips:
+- Include newlines as `\n` in raw JSON strings (or have your client library JSON-encode the string).
+- The server truncates both provided and extracted code to `STUDENT_CODE_MAX_CHARS`.
+
 ## Dependencies
 
 This repo uses split dependency files to keep the deployed Flask app slim while still supporting local notebooks/scripts.

@@ -17,8 +17,9 @@ from utils import (
     generate,
     log_blob,
     log_local,
-    get_student_assignment_code,
     detect_question_blank,
+    resolve_student_code,
+    call_with_accepted_kwargs,
     xml_to_markdown,
     reply_to_ed,
     delete_comment
@@ -118,7 +119,8 @@ def miloh():
       "location": "string",
       "description": "string",
       "chat": ["string", ...]
-      "student_email": "string"
+      "student_email": "string",
+      "student_code": "string (optional; if provided, skips JupyterHub code extraction)"
     }
 
     Returns:
@@ -231,33 +233,33 @@ def miloh():
                     question_category in logistics_categories,
                     question_category in worksheet_categories)
 
-        student_code = "none"
-        if question_category in assignment_categories:
-            student_username = username_from_email(input_dict.get("student_email", ""))
-            hub_url = os.getenv("JUPYTERHUB_URL")
-            hub_api_key = os.getenv("JUPYTERHUB_API_TOKEN")
-            if student_username and hub_url and hub_api_key:
-                try:
-                    student_code = get_student_assignment_code(
-                        hub_url=hub_url,
-                        api_key=hub_api_key,
-                        student_username=student_username,
-                        assignment=input_dict.get("assignment", ""),
-                        timeout=int(os.getenv("JUPYTERHUB_TIMEOUT", "30")),
-                        spawn_timeout=int(os.getenv("JUPYTERHUB_SPAWN_TIMEOUT", "90")),
-                        max_chars=int(os.getenv("STUDENT_CODE_MAX_CHARS", "8000")),
-                    ) or "none"
-                    logger.info("Retrieved student code length=%s", len(student_code))
-                except Exception:
-                    student_code = "none (error)"
-                    logger.warning("miloh: student code retrieval failed\n%s", format_exc())
-            else:
-                logger.info(
-                    "miloh: student code retrieval skipped (student_email=%s hub_url=%s api_key=%s)",
-                    "yes" if student_username else "no",
-                    "yes" if hub_url else "no",
-                    "yes" if hub_api_key else "no",
-                )
+        student_username = username_from_email(input_dict.get("student_email", ""))
+        hub_url = os.getenv("JUPYTERHUB_URL") or ""
+        hub_api_key = os.getenv("JUPYTERHUB_API_TOKEN") or ""
+        student_code, student_code_source = resolve_student_code(
+            provided_student_code=input_dict.get("student_code"),
+            enable_hub_lookup=question_category in assignment_categories,
+            hub_url=hub_url,
+            hub_api_key=hub_api_key,
+            student_username=student_username,
+            assignment=input_dict.get("assignment", ""),
+            timeout=int(os.getenv("JUPYTERHUB_TIMEOUT", "30")),
+            spawn_timeout=int(os.getenv("JUPYTERHUB_SPAWN_TIMEOUT", "90")),
+            max_chars=int(os.getenv("STUDENT_CODE_MAX_CHARS", "8000")),
+        )
+        if student_code_source == "provided":
+            logger.info("Using provided student_code length=%s", len(student_code))
+        elif student_code_source == "hub":
+            logger.info("Retrieved student code length=%s", len(student_code))
+        elif student_code_source == "hub_error":
+            logger.warning("miloh: student code retrieval failed (see utils logs for traceback)")
+        else:
+            logger.info(
+                "miloh: student code retrieval skipped (student_email=%s hub_url=%s api_key=%s)",
+                "yes" if student_username else "no",
+                "yes" if hub_url else "no",
+                "yes" if hub_api_key else "no",
+            )
         question_blank = detect_question_blank(student_code, input_dict.get("question", ""))
         logger.info("Question blank: %s", question_blank)
 
@@ -372,7 +374,8 @@ def miloh():
             if question_category in assignment_categories:
                 try:
                     response_0 = generate(
-                        prompt=prompts.get_first_assignment_prompt(
+                        prompt=call_with_accepted_kwargs(
+                            prompts.get_first_assignment_prompt,
                             processed_conversation=processed_conversation,
                             retrieved_qa_pairs=retrieved_qa_pairs,
                             retrieved_docs_manual=retrieved_docs_manual,
@@ -380,7 +383,7 @@ def miloh():
                             context_signal=context_info["context_signal"],
                             context_chars=context_info["context_chars"],
                             min_context_chars=context_info["min_context_chars"],
-                            question_blank=question_blank
+                            question_blank=question_blank,
                         )
                     )
                     logger.info('Initial response (assignment question) length=%s', len(response_0 or ''))
@@ -588,11 +591,18 @@ def edison():
     # Response generation
     response_0 = response = ''
     if question_category in assignment_categories:
+        student_code, _student_code_source = resolve_student_code(
+            provided_student_code=input_dict.get("student_code"),
+            enable_hub_lookup=False,
+            max_chars=int(os.getenv("STUDENT_CODE_MAX_CHARS", "8000")),
+        )
         response_0 = generate(
-            prompt=prompts.get_first_assignment_prompt(
+            prompt=call_with_accepted_kwargs(
+                prompts.get_first_assignment_prompt,
                 processed_conversation=processed_conversation,
                 retrieved_qa_pairs=retrieved_qa_pairs,
-                retrieved_docs_manual=retrieved_docs_manual
+                retrieved_docs_manual=retrieved_docs_manual,
+                student_code=student_code,
             )
         )
         logger.info('Initial response (assignment question): %s', response_0)

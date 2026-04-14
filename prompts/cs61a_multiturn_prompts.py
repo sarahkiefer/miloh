@@ -110,8 +110,13 @@ at a time."""
 
 
 def get_first_assignment_prompt(processed_conversation: str, retrieved_qa_pairs: str,
-                                retrieved_docs_manual: str) -> list:
-    curr_prompt = f"""Here are the relevant excerpts from the assignment solutions to guide your response:
+                                retrieved_docs_manual: str, student_code: str = "none") -> list:
+    curr_prompt = f"""Student's assignment code (if provided):
+    ==========================================
+    {student_code}
+    ==========================================
+
+    Here are the relevant excerpts from the assignment solutions to guide your response:
     ==========================================
     {retrieved_docs_manual}
     ==========================================
@@ -182,22 +187,22 @@ content_few_shot_1_user = """Here are the sections from the course notes to guid
 Retrieved document
 ==========================================
 ::: {.example step="3"}
-chinese = \[\'coin\', \'string\', \'myriad\'\] suits = chinese
+chinese = \\[\'coin\', \'string\', \'myriad\'\\] suits = chinese
 suits.pop() suits.remove(\'string\') suits.append(\'cup\')
-suits.extend(\[\'sword\', \'club\'\]) suits\[2\] = \'spade\'
-suits\[0:2\] = \[\'heart\', \'diamond\'\]
+suits.extend(\\[\'sword\', \'club\'\\]) suits\\[2\\] = \'spade\'
+suits\\[0:2\\] = \\[\'heart\', \'diamond\'\\]
 :::
 
 Retrieved document
 ==========================================
-\>\>\> suits.pop() \# Remove and return the final element \'myriad\'
-\>\>\> suits.remove(\'string\') \# Remove the first element that equals
+\\>\\>\\> suits.pop() \\# Remove and return the final element \'myriad\'
+\\>\\>\\> suits.remove(\'string\') \\# Remove the first element that equals
 the argument
 
 Three more suits were added (they evolved in name and design over time),
 
-\>\>\> suits.append(\'cup\') \# Add an element to the end \>\>\>
-suits.extend(\[\'sword\', \'club\'\]) \# Add all elements of a sequence
+\\>\\>\\> suits.append(\'cup\') \\# Add an element to the end \\>\\>\\>
+suits.extend(\\[\'sword\', \'club\'\\]) \\# Add all elements of a sequence
 to the end
 
 ==========================================
@@ -384,13 +389,13 @@ Learning to use if and while is an essential skill. During this discussion, focu
 ==========================================
 Worksheet solutions
 ==========================================
-\part The race function below sometimes returns the wrong value and sometimes runs forever.
-\part Find positive integers x and y (with y larger than x but not larger than 2 * x) for which either: race(x, y) returns the wrong value or race(x, y) runs forever
-\part You just need to find one pair of numbers that satisfies either of these conditions to finish the question, but if you want to think of more you can.
-\part Notes:
-\part x += 1 is the same as x = x + 1 when x is assigned to a number.
-\part 0 is a false value and all other numbers are true values.
-\begin
+\\part The race function below sometimes returns the wrong value and sometimes runs forever.
+\\part Find positive integers x and y (with y larger than x but not larger than 2 * x) for which either: race(x, y) returns the wrong value or race(x, y) runs forever
+\\part You just need to find one pair of numbers that satisfies either of these conditions to finish the question, but if you want to think of more you can.
+\\part Notes:
+\\part x += 1 is the same as x = x + 1 when x is assigned to a number.
+\\part 0 is a false value and all other numbers are true values.
+\\begin
 def race(x, y):
     \"\"\"The tortoise always walks x feet per minute, while the hare repeatedly
     runs y feet per minute for 5 minutes, then rests for 5 minutes. Return how
@@ -409,13 +414,13 @@ def race(x, y):
             hare += y
         minutes += 1
     return minutes
-\end
+\\end
 
-\begin{solution}[.75cm]
+\\begin{solution}[.75cm]
 The return value is incorrect when the time that the tortoise first passes the hare is not an integer number of minutes (e.g., for race(2, 3) the tortoise passes the hare after 7.5 minutes), but there is some (larger) integer number of minutes after which both animals have gone the same distance.
 
 The race function will run forever if the only times that the tortoise and hare have gone the same distance are not integers (e.g., for race(4, 5) the tortoise passes the hare after 6.2 minutes, and the hare never catches up).
-\end{solution}
+\\end{solution}
 ==========================================
 
 
